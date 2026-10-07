@@ -1,22 +1,22 @@
 # S&P 500 Monitor
 
-A Node.js application that monitors the S&P 500 using SPY market data and tracks drawdowns from the all-time high (ATH).
+A Node.js application for monitoring S&P 500 drawdowns using SPY market data, with SXR8 used as the EUR investment reference.
 
-The monitor is designed to detect significant market drawdowns and provide context for investing into the SXR8 ETF.
+The project is being built incrementally as a practical DevOps project, covering application state, PostgreSQL, Docker, infrastructure as code, CI/CD, security scanning, AWS deployment, and monitoring.
 
 ## Features
 
 - SPY intraday price monitoring
-- Dynamic SPY all-time high (ATH)
+- Dynamic all-time high (ATH) tracking
 - Drawdown calculation
 - Configurable drawdown thresholds
 - Threshold rearming after market recovery
 - Xetra market-hours awareness
 - SXR8 EUR ATH tracking
 - PostgreSQL persistence
-- Database migrations
+- Versioned database migrations
 - Market history and event storage
-- Docker and Docker Compose support
+- Docker Compose orchestration
 - Automated tests
 
 ## Architecture
@@ -25,144 +25,61 @@ Current local architecture:
 
 ```text
 Docker Compose
-     │
-     ├── PostgreSQL
-     │       │
-     │    healthy
-     │       ▼
-     ├── Migration
-     │       │
-     │    completed successfully
-     │       ▼
-     └── S&P 500 Monitor
+
+PostgreSQL
+    │
+    │ service_healthy
+    ▼
+Database Migration
+    │
+    │ service_completed_successfully
+    ▼
+S&P 500 Monitor
 ```
 
-The services are started using dependency conditions:
+The monitor currently runs as a one-shot process: it retrieves market data, evaluates the monitoring rules, persists the resulting state and exits.
 
-```text
-db
- │ service_healthy
- ▼
-migrate
- │ service_completed_successfully
- ▼
-app
-```
+PostgreSQL data is persisted independently using a Docker named volume.
 
-The application is currently implemented as a one-shot process. It performs a monitoring run and exits successfully.
+## Tech Stack
 
-A later AWS deployment will schedule monitoring automatically.
+- Node.js
+- PostgreSQL 17
+- Docker
+- Docker Compose
+- node-pg-migrate
+- Twelve Data API
+- EODHD API
+- Node.js Test Runner
 
-## Requirements
+## Run Locally
 
-For local development:
+Requirements:
 
 - Docker
 - Docker Compose
 - Twelve Data API key
 - EODHD API token
 
-Node.js is only required when running the application directly outside Docker.
-
-## Configuration
-
-Copy the example environment file:
+Create a local environment file from the provided template:
 
 ```bash
 cp .env.example .env
 ```
 
-Then add your API credentials to `.env`:
+Provide your API credentials and choose a local database password in `.env`.
 
-```env
-TWELVE_DATA_API_KEY=your_key
-EODHD_API_TOKEN=your_token
-
-DB_HOST=localhost
-DB_PORT=5432
-DB_NAME=sp500_monitor
-DB_USER=sp500
-DB_PASSWORD=sp500_dev
-```
-
-`.env` contains secrets and is intentionally excluded from Git.
-
-`.env.example` contains only configuration examples and can be committed safely.
-
-## Run with Docker Compose
-
-Start the complete stack:
+Then start the stack:
 
 ```bash
 docker compose up --build
 ```
 
-Docker Compose will:
-
-1. Pull the PostgreSQL image if necessary.
-2. Build the application images.
-3. Create the PostgreSQL volume and network.
-4. Start PostgreSQL.
-5. Wait until PostgreSQL is healthy.
-6. Run all pending database migrations.
-7. Start the S&P 500 Monitor.
-8. Exit the application after the monitoring run completes.
-
-PostgreSQL remains running so its data remains available for subsequent runs.
-
-## Run the Monitor Again
-
-To execute another one-shot monitoring run:
-
-```bash
-docker compose run --rm app
-```
-
-The existing PostgreSQL database and persisted state will be reused.
-
-## Run Database Migrations
-
-Run pending migrations manually:
-
-```bash
-docker compose run --rm migrate
-```
-
-Applied migrations are tracked by `node-pg-migrate` in the `pgmigrations` table.
-
-Current migrations:
-
-```text
-001_initial_schema
-002_add_market_history_index
-```
-
-## Stop the Stack
-
-Stop and remove the Compose containers and network:
-
-```bash
-docker compose down
-```
-
-The PostgreSQL volume is preserved.
-
-To also delete the database volume and all local database data:
-
-```bash
-docker compose down -v
-```
-
-Use `-v` only when a completely fresh database is desired.
+Docker Compose starts PostgreSQL, waits for the database to become healthy, applies pending migrations, and runs the monitor.
 
 ## Database
 
-PostgreSQL stores:
-
-- monitor state and ATH
-- threshold state
-- market history
-- generated events
+Application state is stored in PostgreSQL.
 
 Main tables:
 
@@ -171,27 +88,28 @@ monitor_state
 threshold_state
 market_history
 events
-pgmigrations
 ```
 
-Database data is stored in a Docker named volume and therefore has a lifecycle independent from the application containers.
+Database schema changes are versioned using `node-pg-migrate`. Applied migrations are tracked in the `pgmigrations` table.
+
+Current migrations:
+
+```text
+001_initial_schema
+002_add_market_history_index
+```
+
+The `market_history` table uses a composite index on `symbol` and `recorded_at` to support historical market-data queries efficiently.
 
 ## Tests
 
-Run the automated tests:
+Run the automated test suite with:
 
 ```bash
 npm test
 ```
 
-Current test suite covers the main domain logic including:
-
-- drawdown calculations
-- threshold behavior
-- threshold rearming
-- market-hours logic
-- Xetra follow-up logic
-- notification formatting
+The test suite covers the core monitoring logic including drawdown calculations, threshold triggering and rearming, market-hours behavior, Xetra follow-up logic, and notification formatting.
 
 ## Project Structure
 
@@ -217,28 +135,28 @@ sp500-monitor/
 └── README.md
 ```
 
-## Planned Infrastructure
+## Roadmap
 
-The project is being developed incrementally.
+The project is developed in incremental levels.
 
-Planned next stages include:
+Current and planned areas include:
 
 ```text
-Terraform
-   ↓
-AWS infrastructure
-   ↓
-EventBridge
-   ↓
-Lambda
-   ↓
-Monitoring run
-   ↓
-SNS / email notifications
+Application & business logic
+        ↓
+PostgreSQL & Docker
+        ↓
+Terraform / Infrastructure as Code
+        ↓
+AWS deployment
+        ↓
+CI/CD & security scanning
+        ↓
+Monitoring & operations
 ```
 
-CI/CD and security scanning will be added using GitHub Actions and Trivy.
+The planned AWS runtime will use scheduled execution for automated market monitoring and notification delivery.
 
 ## Disclaimer
 
-This project is intended for educational and monitoring purposes and does not provide financial advice.
+This project is intended for educational and monitoring purposes only and does not provide financial advice.
